@@ -63,8 +63,8 @@ func (step RestoreCacheStep) Run() error {
 
 	step.logger.EnableDebugLog(input.Verbose)
 
-	saver := cache.NewRestorer(step.envRepo, step.logger, step.cmdFactory)
-	return saver.Restore(cache.RestoreCacheInput{
+	restorer := cache.NewRestorer(step.envRepo, step.logger, step.cmdFactory)
+	return restorer.Restore(cache.RestoreCacheInput{
 		StepId:  stepId,
 		Verbose: input.Verbose,
 		Keys:    keys,
