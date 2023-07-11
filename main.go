@@ -8,7 +8,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/exitcode"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-steplib/steps-restore-gradle-cache/step"
+	"github.com/bitrise-steplib/bitrise-step-restore-gradle-cache/step"
 )
 
 func main() {
