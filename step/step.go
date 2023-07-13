@@ -18,10 +18,10 @@ const stepId = "restore-gradle-cache"
 // checksum values:
 // - `**/*.gradle*`: Gradle build files in any submodule, including ones written in Kotlin (*.gradle.kts)
 // - `**/gradle-wrapper.properties`: contains exact Gradle version
-// - `gradle.properties`: contains Gradle config values
-// - `gradle/libs.versions.toml`: version catalog file, contains dependencies and their versions
+// - `**/gradle.properties`: contains Gradle config values
+// - `**/gradle/libs.versions.toml`: version catalog file, contains dependencies and their versions
 var keys = []string{
-	`{{ .OS }}-{{ .Arch }}-gradle-cache-{{ checksum "**/*.gradle*" "**/gradle-wrapper.properties" "gradle.properties" "gradle/libs.versions.toml" }}`,
+	`{{ .OS }}-{{ .Arch }}-gradle-cache-{{ checksum "**/*.gradle*" "**/gradle-wrapper.properties" "**/gradle.properties" "**/gradle/libs.versions.toml" }}`,
 	`{{ .OS }}-{{ .Arch }}-gradle-cache-`,
 }
 
