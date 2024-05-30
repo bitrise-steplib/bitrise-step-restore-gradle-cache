@@ -25,8 +25,7 @@ func run() exitcode.ExitCode {
 	cacheStep := step.New(logger, inputParser, envRepo, cmdFactory)
 
 	if err := cacheStep.Run(); err != nil {
-		formattedMsg := errorutil.FormattedError(err)
-		logger.Errorf("%s", formattedMsg)
+		logger.Errorf("%s", errorutil.FormattedError(err))
 		return exitcode.Failure
 	}
 
