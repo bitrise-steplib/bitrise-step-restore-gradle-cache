@@ -1,10 +1,10 @@
 module github.com/bitrise-steplib/bitrise-step-restore-gradle-cache
 
-go 1.20
+go 1.22
 
 require (
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.35
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.23
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.40
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.26
 )
 
 require (
