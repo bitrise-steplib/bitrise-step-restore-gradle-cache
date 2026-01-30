@@ -17,11 +17,12 @@ support_url: https://github.com/bitrise-steplib/bitrise-step-restore-gradle-cach
 
 project_type_tags:
 - android
-- ios
 - cordova
-- ionic
-- react-native
 - flutter
+- ionic
+- java
+- kotlin-multiplatform
+- react-native
 type_tags:
 - utility
 
