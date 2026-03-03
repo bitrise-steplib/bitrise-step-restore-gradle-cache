@@ -49,6 +49,7 @@ steps:
 | Key | Description | Flags | Default |
 | --- | --- | --- | --- |
 | `verbose` | Enable logging additional information for troubleshooting | required | `false` |
+| `timeout` | Timeout in seconds | required | `600` |
 | `retries` | Number of retries to attempt when downloading a cache archive fails.  The value 0 means no retries are attempted. | required | `3` |
 </details>
 
