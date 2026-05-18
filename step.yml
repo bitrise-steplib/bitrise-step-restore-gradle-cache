@@ -17,11 +17,12 @@ support_url: https://github.com/bitrise-steplib/bitrise-step-restore-gradle-cach
 
 project_type_tags:
 - android
-- ios
 - cordova
-- ionic
-- react-native
 - flutter
+- ionic
+- java
+- kotlin-multiplatform
+- react-native
 type_tags:
 - utility
 
@@ -47,6 +48,26 @@ inputs:
     value_options:
     - "true"
     - "false"
+
+- timeout: 600
+  opts:
+    category: Debugging
+    title: Timeout
+    summary: Timeout in seconds
+    description: |-
+      Timeout in seconds
+    is_required: true
+
+- retries: 3
+  opts:
+    category: Debugging
+    title: Number of retries
+    summary: Number of retries to attempt when downloading a cache archive fails.
+    description: |-
+      Number of retries to attempt when downloading a cache archive fails.
+
+      The value 0 means no retries are attempted.
+    is_required: true
 
 outputs:
 - BITRISE_CACHE_HIT:

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/hashicorp/go-retryablehttp"
 )
 
@@ -22,13 +22,26 @@ type prepareUploadRequest struct {
 	ArchiveFileName    string `json:"archive_filename"`
 	ArchiveContentType string `json:"archive_content_type"`
 	ArchiveSizeInBytes int64  `json:"archive_size_in_bytes"`
+	ChunkSizeMB        int    `json:"chunk_size_mb,omitempty"` // optional chunk size in MB, default 32MB if not set
 }
 
-type prepareUploadResponse struct {
-	ID            string            `json:"id"`
-	UploadMethod  string            `json:"method"`
-	UploadURL     string            `json:"url"`
-	UploadHeaders map[string]string `json:"headers"`
+type prepareMultipartUploadResponse struct {
+	ID                 string                      `json:"id"`
+	ChunkSizeBytes     int64                       `json:"chunk_size_bytes"`
+	ChunkCount         int64                       `json:"chunk_count"`
+	LastChunkSizeBytes int64                       `json:"last_chunk_size_bytes"`
+	URLs               []prepareMultipartUploadURL `json:"urls"`
+}
+
+type prepareMultipartUploadURL struct {
+	Method  string            `json:"method"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+}
+
+type completeMultipartUploadRequest struct {
+	Successful bool     `json:"successful"`
+	Etags      []string `json:"etags,omitempty"`
 }
 
 type acknowledgeResponse struct {
@@ -45,95 +58,95 @@ type apiClient struct {
 	httpClient  *retryablehttp.Client
 	baseURL     string
 	accessToken string
+	logger      log.Logger
 }
 
-func newAPIClient(client *retryablehttp.Client, baseURL string, accessToken string) apiClient {
+func newAPIClient(client *retryablehttp.Client, baseURL string, accessToken string, logger log.Logger) apiClient {
 	return apiClient{
 		httpClient:  client,
 		baseURL:     baseURL,
 		accessToken: accessToken,
+		logger:      logger,
 	}
 }
 
-func (c apiClient) prepareUpload(requestBody prepareUploadRequest) (prepareUploadResponse, error) {
-	url := fmt.Sprintf("%s/upload", c.baseURL)
+func (c apiClient) prepareMultipartUpload(requestBody prepareUploadRequest) (prepareMultipartUploadResponse, error) {
+	url := fmt.Sprintf("%s/multipart-upload", c.baseURL)
 
 	body, err := json.Marshal(requestBody)
 	if err != nil {
-		return prepareUploadResponse{}, err
+		return prepareMultipartUploadResponse{}, err
 	}
 
 	req, err := retryablehttp.NewRequest(http.MethodPost, url, body)
 	if err != nil {
-		return prepareUploadResponse{}, err
+		return prepareMultipartUploadResponse{}, err
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
 	req.Header.Set("Content-type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return prepareUploadResponse{}, err
+		return prepareMultipartUploadResponse{}, err
 	}
 	defer func(body io.ReadCloser) {
 		err := body.Close()
 		if err != nil {
-			log.Print(err.Error())
+			c.logger.Printf(err.Error())
 		}
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusCreated {
-		return prepareUploadResponse{}, unwrapError(resp)
+		return prepareMultipartUploadResponse{}, unwrapError(resp)
 	}
 
-	var response prepareUploadResponse
+	var response prepareMultipartUploadResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
-		return prepareUploadResponse{}, err
+		return prepareMultipartUploadResponse{}, err
 	}
 
 	return response, nil
 }
 
-func (c apiClient) uploadArchive(archivePath, uploadMethod, uploadURL string, headers map[string]string) error {
-	file, err := os.Open(archivePath)
+func (c apiClient) completeMultipartUpload(uploadID string, etags []string) (acknowledgeResponse, error) {
+	resp, err := c.acknowledgeMultipartUpload(uploadID, true, etags)
 	if err != nil {
-		return err
+		return acknowledgeResponse{}, fmt.Errorf("complete multipart upload: %w", err)
 	}
+	return resp, nil
+}
 
-	req, err := retryablehttp.NewRequest(uploadMethod, uploadURL, file)
+func (c apiClient) abortMultipartUpload(uploadID string) error {
+	_, err := c.acknowledgeMultipartUpload(uploadID, false, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("abort multipart upload: %w", err)
 	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func(body io.ReadCloser) {
-		err := body.Close()
-		if err != nil {
-			log.Print(err.Error())
-		}
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return unwrapError(resp)
-	}
-
 	return nil
 }
 
-func (c apiClient) acknowledgeUpload(uploadID string) (acknowledgeResponse, error) {
-	url := fmt.Sprintf("%s/upload/%s/acknowledge", c.baseURL, uploadID)
+func (c apiClient) acknowledgeMultipartUpload(uploadID string, successful bool, etags []string) (acknowledgeResponse, error) {
+	url := fmt.Sprintf("%s/multipart-upload/%s/acknowledge", c.baseURL, uploadID)
 
-	req, err := retryablehttp.NewRequest(http.MethodPatch, url, nil)
+	requestBody := completeMultipartUploadRequest{
+		Successful: successful,
+		Etags:      etags,
+	}
+
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		return acknowledgeResponse{}, err
+	}
+
+	req, err := retryablehttp.NewRequest(http.MethodPatch, url, body)
 	if err != nil {
 		return acknowledgeResponse{}, err
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
+	req.Header.Set("Content-type", "application/json")
+	if buildSlug := os.Getenv("BITRISE_BUILD_SLUG"); buildSlug != "" {
+		req.Header.Set("X-Build-Slug", buildSlug)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -142,7 +155,7 @@ func (c apiClient) acknowledgeUpload(uploadID string) (acknowledgeResponse, erro
 	defer func(body io.ReadCloser) {
 		err := body.Close()
 		if err != nil {
-			log.Print(err.Error())
+			c.logger.Printf(err.Error())
 		}
 	}(resp.Body)
 
@@ -178,7 +191,7 @@ func (c apiClient) restore(cacheKeys []string) (restoreResponse, error) {
 	defer func(body io.ReadCloser) {
 		err := body.Close()
 		if err != nil {
-			log.Print(err.Error())
+			c.logger.Printf(err.Error())
 		}
 	}(resp.Body)
 
@@ -196,24 +209,6 @@ func (c apiClient) restore(cacheKeys []string) (restoreResponse, error) {
 	}
 
 	return response, nil
-}
-
-func (c apiClient) downloadArchive(url string) (io.ReadCloser, error) {
-	resp, err := c.httpClient.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		defer func(body io.ReadCloser) {
-			err := body.Close()
-			if err != nil {
-				log.Print(err.Error())
-			}
-		}(resp.Body)
-		return nil, unwrapError(resp)
-	}
-
-	return resp.Body, nil
 }
 
 func unwrapError(resp *http.Response) error {
