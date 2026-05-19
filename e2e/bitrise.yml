@@ -18,7 +18,10 @@ workflows:
         inputs:
         - content: |-
             set -ex
-            rm -rf ~/.gradle
+            # Skip ~/.gradle/init.d — populated by the Bitrise stack image and
+            # held open on the noble-24.04 docker stack, which causes
+            # `rm -rf ~/.gradle` to fail with "Device or resource busy".
+            find ~/.gradle -mindepth 1 -maxdepth 1 ! -name init.d -exec rm -rf {} +
             rm -rf ./_tmp/.gradle
     - android-build:
         inputs:
@@ -40,7 +43,12 @@ workflows:
         inputs:
         - content: |-
               set -ex
-              rm -rf ~/.gradle
+              # Stop the daemon so it doesn't race with the cleanup below.
+              ./gradlew -stop || true
+              # Skip ~/.gradle/init.d — populated by the Bitrise stack image and
+              # held open on the noble-24.04 docker stack, which causes
+              # `rm -rf ~/.gradle` to fail with "Device or resource busy".
+              find ~/.gradle -mindepth 1 -maxdepth 1 ! -name init.d -exec rm -rf {} +
               rm -rf ./_tmp/.gradle
     - path::./:
         title: Execute step
