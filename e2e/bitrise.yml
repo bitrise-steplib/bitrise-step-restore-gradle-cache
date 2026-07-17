@@ -6,6 +6,10 @@ workflows:
     envs:
     - TEST_APP_URL: https://github.com/bitrise-io/Bitrise-Android-Sample
     - BRANCH: main
+    # Fixed, world-writable Gradle home. The step's cache key is not stack-scoped,
+    # so a restore can pull another stack's archive; keeping the home identical and
+    # writable on every stack avoids extracting into a previous stack's /root home.
+    - GRADLE_USER_HOME: /tmp/bitrise-gradle-home
     before_run:
     - _setup
     steps:
@@ -18,10 +22,10 @@ workflows:
         inputs:
         - content: |-
             set -ex
-            # Skip ~/.gradle/init.d — populated by the Bitrise stack image and
-            # held open on the noble-24.04 docker stack, which causes
-            # `rm -rf ~/.gradle` to fail with "Device or resource busy".
-            mkdir -p ~/.gradle && find ~/.gradle -mindepth 1 -maxdepth 1 ! -name init.d -exec rm -rf {} +
+            mkdir -p "$GRADLE_USER_HOME/init.d"
+            # Preserve the stack's Gradle mirror init scripts in the custom home.
+            cp -a ~/.gradle/init.d/. "$GRADLE_USER_HOME/init.d/" 2>/dev/null || true
+            find "$GRADLE_USER_HOME" -mindepth 1 -maxdepth 1 ! -name init.d -exec rm -rf {} +
             rm -rf ./_tmp/.gradle
     - android-build:
         inputs:
@@ -32,10 +36,10 @@ workflows:
         is_skippable: false
         inputs:
         - key: |-
-            {{ getenv "BITRISEIO_STACK_ID" }}-gradle-cache-{{ checksum "**/*.gradle*" "**/gradle-wrapper.properties" "gradle.properties" "gradle/libs.versions.toml" }}
+            {{ .OS }}-{{ .Arch }}-gradle-cache-{{ checksum "**/*.gradle*" "**/gradle-wrapper.properties" "**/gradle.properties" "**/libs.versions.toml" }}
         - paths: |-
-            ~/.gradle/caches
-            ~/.gradle/wrapper
+            $GRADLE_USER_HOME/caches
+            $GRADLE_USER_HOME/wrapper
             .gradle/configuration-cache
         - verbose: "true"
     - script:
@@ -45,10 +49,7 @@ workflows:
               set -ex
               # Stop the daemon so it doesn't race with the cleanup below.
               ./gradlew -stop || true
-              # Skip ~/.gradle/init.d — populated by the Bitrise stack image and
-              # held open on the noble-24.04 docker stack, which causes
-              # `rm -rf ~/.gradle` to fail with "Device or resource busy".
-              mkdir -p ~/.gradle && find ~/.gradle -mindepth 1 -maxdepth 1 ! -name init.d -exec rm -rf {} +
+              find "$GRADLE_USER_HOME" -mindepth 1 -maxdepth 1 ! -name init.d -exec rm -rf {} +
               rm -rf ./_tmp/.gradle
     - path::./:
         title: Execute step
@@ -56,8 +57,6 @@ workflows:
         is_skippable: false
         inputs:
         - verbose: "true"
-        - key: |-
-            {{ getenv "BITRISEIO_STACK_ID" }}-gradle-cache-{{ checksum "**/*.gradle*" "**/gradle-wrapper.properties" "gradle.properties" "gradle/libs.versions.toml" }}
     - android-build:
         title: Build app again
         inputs:
